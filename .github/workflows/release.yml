@@ -41,7 +41,7 @@ jobs:
         run: |
           if [ "${{ github.ref_name }}" = "dev" ]; then
             {
-              echo "tag=dev"
+              echo "tag=dev-latest"
               echo "name=Dev build"
               echo "prerelease=true"
               echo "make_latest=false"
