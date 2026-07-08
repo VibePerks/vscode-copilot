@@ -38,7 +38,7 @@ describe("renderLine", () => {
 
   it("appends the domain defensively when missing from the sentence", () => {
     expect(renderLine(ad({ sentence: "Fast APIs for every chain", domain: "alchemy.com" }))).toBe(
-      "Fast APIs for every chain - alchemy.com",
+      "alchemy.com - Fast APIs for every chain",
     )
   })
 
@@ -47,7 +47,7 @@ describe("renderLine", () => {
   })
 
   it("sanitizes control bytes injected into the sentence or domain", () => {
-    expect(renderLine(ad({ sentence: "evil\u001b[31m", domain: "x.com" }))).toBe("evil[31m - x.com")
+    expect(renderLine(ad({ sentence: "evil\u001b[31m", domain: "x.com" }))).toBe("x.com - evil[31m")
   })
 })
 
@@ -73,21 +73,21 @@ describe("adUrl", () => {
 })
 
 describe("adMarkdown", () => {
-  it("bolds the sentence and links the domain (underlined + clickable)", () => {
+  it("links the domain first (underlined + clickable), then bolds the sentence", () => {
     expect(adMarkdown(ad())).toBe(
-      "**Sponsored:** **Fast APIs for every chain -** [alchemy.com](https://alchemy.com/)",
+      "**Sponsored:** [alchemy.com](https://alchemy.com/) **Fast APIs for every chain**",
     )
   })
 
-  it("appends a linked domain when it is absent from the sentence", () => {
+  it("prepends a linked domain when it is absent from the sentence", () => {
     expect(adMarkdown(ad({ sentence: "Fast APIs for builders", domain: "alchemy.com" }))).toBe(
-      "**Sponsored:** **Fast APIs for builders** [alchemy.com](https://alchemy.com/)",
+      "**Sponsored:** [alchemy.com](https://alchemy.com/) **Fast APIs for builders**",
     )
   })
 
   it("shows an unsafe domain as plain text, never a link", () => {
     expect(adMarkdown(ad({ sentence: "Total pwn", domain: "javascript:alert(1)" }))).toBe(
-      "**Sponsored:** **Total pwn** javascript:alert(1)",
+      "**Sponsored:** javascript:alert(1) **Total pwn**",
     )
   })
 

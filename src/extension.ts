@@ -138,7 +138,9 @@ async function commandSignIn(): Promise<void> {
   saveDeviceToken(env(), token.trim())
   reload()
   render({ ad: currentAd, servedAt: 0, recorded: true })
-  void vscode.window.showInformationMessage("VibePerks: signed in.")
+  void vscode.window.showInformationMessage(
+    "VibePerks: signed in. Reload the window (or restart VS Code) for the change to take full effect.",
+  )
 }
 
 async function commandSignOut(): Promise<void> {

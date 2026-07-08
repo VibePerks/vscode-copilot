@@ -11,14 +11,14 @@ export function sanitize(s: string): string {
   return s.replace(CONTROL, "").trim()
 }
 
-// renderLine formats an ad as a single plain-text line. The sentence already ends
-// with the domain per the product spec; if it does not, the domain is appended
-// defensively.
+// renderLine formats an ad as a single plain-text line. The advertiser domain leads
+// the line, followed by the sentence ("<domain> - <sentence>"); when the sentence
+// already contains the domain it is rendered as-is.
 export function renderLine(ad: Ad): string {
   const sentence = sanitize(ad.sentence)
   const domain = sanitize(ad.domain)
   if (domain && !sentence.includes(domain)) {
-    return `${sentence} - ${domain}`.trim()
+    return `${domain} - ${sentence}`.trim()
   }
   return sentence
 }
@@ -45,16 +45,19 @@ export function adUrl(domain: string): string | null {
   return url.toString()
 }
 
-// adMarkdown renders a served ad for the chat participant: a bold sentence and the
-// advertiser's domain as an underlined, clickable Markdown link (Markdown link text is
-// underlined by VS Code's chat renderer). The domain is only linked when it resolves to
-// a safe http(s) URL; otherwise it is shown as plain text.
+// adMarkdown renders a served ad for the chat participant: the advertiser's domain leads
+// as an underlined, clickable Markdown link (Markdown link text is underlined by VS
+// Code's chat renderer), followed by the bold sentence. The domain is only linked when it
+// resolves to a safe http(s) URL; otherwise it is shown as plain text.
 export function adMarkdown(ad: Ad): string {
   const sentence = sanitize(ad.sentence)
   const domain = sanitize(ad.domain)
   const url = adUrl(domain)
   const link = domain ? (url ? `[${domain}](${url})` : domain) : ""
-  const body = sentence.includes(domain) && domain ? sentence.replace(domain, "").trim() : sentence
+  const stripped =
+    sentence.includes(domain) && domain ? sentence.replace(domain, "").trim() : sentence
+  // Drop any leftover separator now that the domain leads the line.
+  const body = stripped.replace(/^[-\s]+|[-\s]+$/g, "")
   const bold = body ? `**${body}**` : ""
-  return ["**Sponsored:**", bold, link].filter(Boolean).join(" ")
+  return ["**Sponsored:**", link, bold].filter(Boolean).join(" ")
 }
