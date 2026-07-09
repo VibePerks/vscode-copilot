@@ -55,6 +55,17 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      # Move the channel tag to THIS commit before publishing. softprops/action-gh-release
+      # refreshes an existing release's assets but never re-points an existing tag, which
+      # left the "latest"/"dev-latest" tag (and thus the release's displayed version and its
+      # auto-generated "Source code" archives) frozen at the commit where the tag was first
+      # created while the VSIX was rebuilt. Force-moving the tag keeps the version text,
+      # source archives, and the .vsix asset all pointing at the same commit.
+      - name: Move the "${{ steps.channel.outputs.tag }}" tag to this commit
+        run: |
+          git tag -f "${{ steps.channel.outputs.tag }}" HEAD
+          git push -f origin "refs/tags/${{ steps.channel.outputs.tag }}"
+
       - name: Publish to the "${{ steps.channel.outputs.tag }}" release
         uses: softprops/action-gh-release@v2
         with:

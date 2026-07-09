@@ -5,8 +5,8 @@ import type { Ad } from "../src/types"
 function ad(over: Partial<Ad> = {}): Ad {
   return {
     ad_id: "a1",
-    sentence: "Fast APIs for every chain - alchemy.com",
-    domain: "alchemy.com",
+    sentence: "Get paid while vibe coding - VibePerks.ai",
+    domain: "VibePerks.ai",
     impression_token: "t1",
     rotate_seconds: 20,
     ...over,
@@ -33,12 +33,12 @@ describe("sanitize", () => {
 
 describe("renderLine", () => {
   it("returns the sentence when it already ends in the domain", () => {
-    expect(renderLine(ad())).toBe("Fast APIs for every chain - alchemy.com")
+    expect(renderLine(ad())).toBe("Get paid while vibe coding - VibePerks.ai")
   })
 
   it("appends the domain defensively when missing from the sentence", () => {
-    expect(renderLine(ad({ sentence: "Fast APIs for every chain", domain: "alchemy.com" }))).toBe(
-      "alchemy.com - Fast APIs for every chain",
+    expect(renderLine(ad({ sentence: "Get paid while vibe coding", domain: "VibePerks.ai" }))).toBe(
+      "VibePerks.ai - Get paid while vibe coding",
     )
   })
 
@@ -53,7 +53,7 @@ describe("renderLine", () => {
 
 describe("adUrl", () => {
   it("adds an https scheme to a bare domain", () => {
-    expect(adUrl("alchemy.com")).toBe("https://alchemy.com/")
+    expect(adUrl("VibePerks.ai")).toBe("https://vibeperks.ai/")
   })
 
   it("keeps an explicit http(s) scheme", () => {
@@ -75,13 +75,13 @@ describe("adUrl", () => {
 describe("adMarkdown", () => {
   it("links the domain first (underlined + clickable), then bolds the sentence", () => {
     expect(adMarkdown(ad())).toBe(
-      "**Sponsored:** [alchemy.com](https://alchemy.com/) **Fast APIs for every chain**",
+      "**Sponsored:** [VibePerks.ai](https://vibeperks.ai/) **Get paid while vibe coding**",
     )
   })
 
   it("prepends a linked domain when it is absent from the sentence", () => {
-    expect(adMarkdown(ad({ sentence: "Fast APIs for builders", domain: "alchemy.com" }))).toBe(
-      "**Sponsored:** [alchemy.com](https://alchemy.com/) **Fast APIs for builders**",
+    expect(adMarkdown(ad({ sentence: "Get paid while vibe coding", domain: "VibePerks.ai" }))).toBe(
+      "**Sponsored:** [VibePerks.ai](https://vibeperks.ai/) **Get paid while vibe coding**",
     )
   })
 

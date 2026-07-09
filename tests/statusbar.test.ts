@@ -13,8 +13,8 @@ import type { Ad } from "../src/types"
 function ad(over: Partial<Ad> = {}): Ad {
   return {
     ad_id: "a1",
-    sentence: "Fast APIs for every chain - alchemy.com",
-    domain: "alchemy.com",
+    sentence: "Get paid while vibe coding - VibePerks.ai",
+    domain: "VibePerks.ai",
     impression_token: "t1",
     rotate_seconds: 20,
     ...over,
@@ -53,7 +53,7 @@ describe("clip", () => {
 
 describe("adText", () => {
   it("prefixes a megaphone line", () => {
-    expect(adText(ad())).toBe("$(megaphone) Fast APIs for every chain - alchemy.com")
+    expect(adText(ad())).toBe("$(megaphone) Get paid while vibe coding - VibePerks.ai")
   })
 
   it("bounds an overlong sentence", () => {
@@ -70,7 +70,7 @@ describe("StatusBar", () => {
     new StatusBar(item).showAd(ad())
     expect(item.text).toContain("$(megaphone)")
     expect(item.command).toBe(LEARN_MORE_COMMAND)
-    expect(item.tooltip).toContain("alchemy.com")
+    expect(item.tooltip).toContain("VibePerks.ai")
     expect(item.shown).toBe(true)
   })
 

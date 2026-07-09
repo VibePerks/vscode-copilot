@@ -27,8 +27,8 @@ function header(init: RequestInit | undefined, name: string): string | undefined
 
 const sampleAd: Ad = {
   ad_id: "a1",
-  sentence: "Fast APIs\u001b for every chain - alchemy.com",
-  domain: "alchemy.com\u0000",
+  sentence: "Get paid while vibe\u001b coding - VibePerks.ai",
+  domain: "VibePerks.ai\u0000",
   impression_token: "imp1",
   rotate_seconds: 30,
 }
@@ -38,8 +38,8 @@ describe("VibePerksClient.serve", () => {
     const { fetch, calls } = recordingFetch(200, sampleAd)
     const client = new VibePerksClient("https://api.example.com/", "dev-token", fetch)
     const ad = await client.serve()
-    expect(ad?.sentence).toBe("Fast APIs for every chain - alchemy.com")
-    expect(ad?.domain).toBe("alchemy.com")
+    expect(ad?.sentence).toBe("Get paid while vibe coding - VibePerks.ai")
+    expect(ad?.domain).toBe("VibePerks.ai")
     expect(calls[0].url).toBe("https://api.example.com/v1/ads/serve")
     expect(header(calls[0].init, "X-Device-Token")).toBe("dev-token")
     expect(calls[0].init?.method).toBe("GET")

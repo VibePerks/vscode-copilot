@@ -16,8 +16,8 @@ const CFG: PluginConfig = { apiBase: "https://x", deviceToken: "tok", optOut: fa
 function ad(over: Partial<Ad> = {}): Ad {
   return {
     ad_id: "a1",
-    sentence: "Fast APIs - alchemy.com",
-    domain: "alchemy.com",
+    sentence: "Get paid while vibe coding - VibePerks.ai",
+    domain: "VibePerks.ai",
     impression_token: "imp1",
     rotate_seconds: 20,
     ...over,
