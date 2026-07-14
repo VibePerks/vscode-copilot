@@ -42,6 +42,7 @@ export class VibePerksClient {
       const ad = (await res.json()) as Ad
       ad.sentence = sanitize(ad.sentence)
       ad.domain = sanitize(ad.domain)
+      ad.website_url = sanitize(ad.website_url ?? "")
       return ad
     }
     if (res.status === 401 || res.status === 403)

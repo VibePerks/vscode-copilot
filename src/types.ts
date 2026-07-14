@@ -7,6 +7,10 @@ export interface Ad {
   ad_id: string
   sentence: string
   domain: string
+  // Full advertiser destination URL (path + query preserved, e.g. UTM tags). Used
+  // as the click target while `domain` remains the visible text. Optional so an
+  // older backend that omits it still deserializes (falls back to the domain).
+  website_url?: string
   impression_token: string
   rotate_seconds: number
 }

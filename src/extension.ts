@@ -10,7 +10,7 @@ import {
   setOptOut,
 } from "./config"
 import { type Meta, onActive, onIdle } from "./engine"
-import { adMarkdown, adUrl } from "./sanitize"
+import { adMarkdown, clickUrl } from "./sanitize"
 import { AD_BACKGROUND_COLOR_ID, LEARN_MORE_COMMAND, SIGN_IN_COMMAND, StatusBar } from "./statusbar"
 import { type AdState, type Kv, clearState, loadState, mementoKv } from "./store"
 import type { Ad } from "./types"
@@ -169,7 +169,7 @@ function commandOptIn(): void {
 }
 
 async function commandLearnMore(): Promise<void> {
-  const url = (currentAd && adUrl(currentAd.domain)) || INSTALL_URL
+  const url = (currentAd && clickUrl(currentAd)) || INSTALL_URL
   await vscode.env.openExternal(vscode.Uri.parse(url))
 }
 

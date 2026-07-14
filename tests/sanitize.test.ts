@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { adMarkdown, adUrl, renderLine, sanitize } from "../src/sanitize"
+import { adMarkdown, adUrl, clickUrl, renderLine, sanitize } from "../src/sanitize"
 import type { Ad } from "../src/types"
 
 function ad(over: Partial<Ad> = {}): Ad {
@@ -72,10 +72,42 @@ describe("adUrl", () => {
   })
 })
 
+describe("clickUrl", () => {
+  it("prefers the full website_url (path + query preserved)", () => {
+    expect(
+      clickUrl(ad({ domain: "ramp.com", website_url: "https://ramp.com/x?utm_source=cli" })),
+    ).toBe("https://ramp.com/x?utm_source=cli")
+  })
+
+  it("falls back to the domain when website_url is missing", () => {
+    expect(clickUrl(ad({ domain: "shop.com", website_url: "" }))).toBe("https://shop.com/")
+  })
+
+  it("falls back to the domain when website_url is unsafe", () => {
+    expect(clickUrl(ad({ domain: "shop.com", website_url: "javascript:alert(1)" }))).toBe(
+      "https://shop.com/",
+    )
+  })
+})
+
 describe("adMarkdown", () => {
   it("links the domain first (underlined + clickable), then bolds the sentence", () => {
     expect(adMarkdown(ad())).toBe(
       "**Sponsored:** [VibePerks.ai](https://vibeperks.ai/) **Get paid while vibe coding**",
+    )
+  })
+
+  it("links the full website_url as the target while showing only the domain", () => {
+    expect(
+      adMarkdown(
+        ad({
+          sentence: "Corporate cards",
+          domain: "ramp.com",
+          website_url: "https://ramp.com/business-cards?utm_source=kickbacks",
+        }),
+      ),
+    ).toBe(
+      "**Sponsored:** [ramp.com](https://ramp.com/business-cards?utm_source=kickbacks) **Corporate cards**",
     )
   })
 

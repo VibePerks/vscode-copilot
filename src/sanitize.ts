@@ -45,14 +45,24 @@ export function adUrl(domain: string): string | null {
   return url.toString()
 }
 
+// clickUrl resolves the click target for an ad: the advertiser's full destination
+// URL (path + query such as UTM tags preserved) when it is a safe http(s) link, else
+// the bare domain promoted to https. Returns null when neither is a safe http(s)
+// target. The visible line always shows only the domain, never this URL.
+export function clickUrl(ad: Ad): string | null {
+  return adUrl(ad.website_url ?? "") ?? adUrl(ad.domain)
+}
+
 // adMarkdown renders a served ad for the chat participant: the advertiser's domain leads
 // as an underlined, clickable Markdown link (Markdown link text is underlined by VS
-// Code's chat renderer), followed by the bold sentence. The domain is only linked when it
-// resolves to a safe http(s) URL; otherwise it is shown as plain text.
+// Code's chat renderer), followed by the bold sentence. The link's target is the
+// advertiser's full destination URL (clickUrl) while the shown text is only the domain;
+// the domain is only linked when a safe http(s) URL resolves, otherwise it is shown as
+// plain text.
 export function adMarkdown(ad: Ad): string {
   const sentence = sanitize(ad.sentence)
   const domain = sanitize(ad.domain)
-  const url = adUrl(domain)
+  const url = clickUrl(ad)
   const link = domain ? (url ? `[${domain}](${url})` : domain) : ""
   const stripped =
     sentence.includes(domain) && domain ? sentence.replace(domain, "").trim() : sentence
