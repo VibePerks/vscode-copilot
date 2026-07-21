@@ -124,6 +124,18 @@ describe("StatusBar", () => {
     expect(item.backgroundColor).toBeUndefined()
   })
 
+  it("renders the earning-cap notice without a tint", () => {
+    const item = fakeItem()
+    const highlight = { id: AD_BACKGROUND_COLOR_ID }
+    const bar = new StatusBar(item, highlight)
+    bar.showAd(ad())
+    bar.showPaused("2026-07-21T15:00:00+00:00")
+    expect(item.text).toContain("limit reached")
+    expect(item.tooltip).toContain("earning limit")
+    expect(item.backgroundColor).toBeUndefined()
+    expect(item.shown).toBe(true)
+  })
+
   it("hides the item", () => {
     const item = fakeItem()
     const bar = new StatusBar(item)

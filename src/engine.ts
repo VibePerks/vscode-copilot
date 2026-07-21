@@ -11,7 +11,8 @@ import {
   saveQueue,
   saveState,
 } from "./store"
-import type { Ad, Impression } from "./types"
+import type { Impression, ServeResult } from "./types"
+import { isEarningCapped } from "./types"
 
 // Meta is the per-session adapter metadata attached to every impression.
 export interface Meta {
@@ -21,18 +22,17 @@ export interface Meta {
   sessionId: string
 }
 
-const DEFAULT_ROTATE_SECONDS = 20
 const FLUSH_RETRY_DELAY_MS = 200
+// Billable serve cadence: at most one new ad (one impression) every 5 minutes while
+// active, so a continuously active session earns at most 12 ads/hour - matching the
+// backend's per-hour earning cap. Between serves the status bar keeps the cached ad;
+// an idle editor triggers no activity bursts, so it stops serving.
+export const MIN_BILLABLE_INTERVAL_MS = 5 * 60 * 1000
 
 const EMPTY_STATE: AdState = { ad: null, servedAt: 0, recorded: false }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-export function rotateMs(ad: Ad | null): number {
-  const seconds = ad && ad.rotate_seconds > 0 ? ad.rotate_seconds : DEFAULT_ROTATE_SECONDS
-  return seconds * 1000
 }
 
 // recordCurrent enqueues an impression for the currently displayed ad exactly
@@ -91,11 +91,13 @@ export async function flush(kv: Kv, client: VibePerksClient): Promise<void> {
   if (firstErr) throw firstErr
 }
 
-// onActive is the agent-working / rotation worker. It records the current ad's
-// impression and serves the next ad when there is no ad or rotate_seconds has
-// elapsed, then flushes the buffer. The resulting AdState is returned so the caller
-// renders the status bar from it. Opt-out clears the cached ad, does no network I/O,
-// and returns the empty state.
+// onActive is the agent-working worker. It serves the next billable ad only when
+// there is no ad, or when at least MIN_BILLABLE_INTERVAL_MS has elapsed since the
+// last serve (so serving is paced to <=12/hour), recording the current ad's
+// impression first, then flushes the buffer. While an earning cap is active it
+// serves nothing until `try_again_at`. The resulting AdState is returned so the
+// caller renders the status bar from it. Opt-out clears the cached ad, does no
+// network I/O, and returns the empty state.
 export async function onActive(
   kv: Kv,
   client: VibePerksClient,
@@ -108,15 +110,20 @@ export async function onActive(
     return { ...EMPTY_STATE }
   }
   let s = await loadState(kv)
-  const due = !s.ad || now - s.servedAt >= rotateMs(s.ad)
+  // Earning-cap backoff: while capped, do not serve until the reset time passes.
+  if (s.tryAgainAt && now < Date.parse(s.tryAgainAt)) {
+    await flush(kv, client)
+    return s
+  }
+  const due = !s.ad || now - s.servedAt >= MIN_BILLABLE_INTERVAL_MS
   if (!due) {
     await flush(kv, client)
     return s
   }
   s = await recordCurrent(kv, s, meta, now)
-  let ad: Ad | null
+  let result: ServeResult
   try {
-    ad = await client.serve()
+    result = await client.serve()
   } catch (e) {
     // A rejected device token is terminal: clear the cached ad and flag the slot so
     // the status bar shows a sign-in notice. This is a handled outcome, not an error
@@ -140,8 +147,20 @@ export async function onActive(
     await flush(kv, client)
     throw e
   }
-  const next: AdState = ad
-    ? { ad, servedAt: now, recorded: false }
+  if (isEarningCapped(result)) {
+    // Publisher hit their earning cap: no ad, pause serving until try_again_at.
+    const capped: AdState = {
+      ad: null,
+      servedAt: 0,
+      recorded: false,
+      tryAgainAt: result.try_again_at,
+    }
+    await saveState(kv, capped)
+    await flush(kv, client)
+    return capped
+  }
+  const next: AdState = result
+    ? { ad: result, servedAt: now, recorded: false }
     : { ad: null, servedAt: 0, recorded: false }
   await saveState(kv, next)
   await flush(kv, client)

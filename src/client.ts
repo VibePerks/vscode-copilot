@@ -1,6 +1,6 @@
 import { UnauthorizedError, RejectedError } from "./errors"
 import { sanitize } from "./sanitize"
-import type { Ad, Impression } from "./types"
+import type { Ad, Impression, ServeResult } from "./types"
 
 // A hard per-request timeout so a slow or hung backend can never stall the
 // extension host.
@@ -30,8 +30,11 @@ export class VibePerksClient {
     this.fetchImpl = fetchImpl
   }
 
-  // serve fetches the next eligible ad. A 204 (empty inventory) returns null.
-  async serve(): Promise<Ad | null> {
+  // serve fetches the next eligible ad. A 204 (empty inventory) returns null. A 200
+  // with status "earning_capped" means the publisher hit their hourly/daily earning
+  // limit: no ad, only an EarningCapped signal carrying try_again_at so the caller
+  // stops polling until the cap resets.
+  async serve(): Promise<ServeResult> {
     const res = await this.fetchImpl(this.base + "/v1/ads/serve", {
       method: "GET",
       headers: { "X-Device-Token": this.token },
@@ -39,7 +42,11 @@ export class VibePerksClient {
     })
     if (res.status === 204) return null
     if (res.status === 200) {
-      const ad = (await res.json()) as Ad
+      const body = (await res.json()) as Record<string, unknown>
+      if (body.status === "earning_capped") {
+        return { earning_capped: true, try_again_at: String(body.try_again_at ?? "") }
+      }
+      const ad = body as unknown as Ad
       ad.sentence = sanitize(ad.sentence)
       ad.domain = sanitize(ad.domain)
       ad.website_url = sanitize(ad.website_url ?? "")

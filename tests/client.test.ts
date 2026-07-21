@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import { VibePerksClient, type FetchFn } from "../src/client"
 import { RejectedError, UnauthorizedError } from "../src/errors"
 import type { Ad, Impression } from "../src/types"
+import { isEarningCapped } from "../src/types"
 
 interface Call {
   url: string
@@ -37,12 +38,25 @@ describe("VibePerksClient.serve", () => {
   it("returns a sanitized ad on 200 and attaches the device token", async () => {
     const { fetch, calls } = recordingFetch(200, sampleAd)
     const client = new VibePerksClient("https://api.example.com/", "dev-token", fetch)
-    const ad = await client.serve()
-    expect(ad?.sentence).toBe("Get paid while vibe coding - VibePerks.ai")
-    expect(ad?.domain).toBe("VibePerks.ai")
+    const result = await client.serve()
+    expect(isEarningCapped(result)).toBe(false)
+    const ad = result as Ad
+    expect(ad.sentence).toBe("Get paid while vibe coding - VibePerks.ai")
+    expect(ad.domain).toBe("VibePerks.ai")
     expect(calls[0].url).toBe("https://api.example.com/v1/ads/serve")
     expect(header(calls[0].init, "X-Device-Token")).toBe("dev-token")
     expect(calls[0].init?.method).toBe("GET")
+  })
+
+  it("returns an earning-capped signal on 200 with status earning_capped", async () => {
+    const { fetch } = recordingFetch(200, {
+      status: "earning_capped",
+      ad_id: null,
+      try_again_at: "2026-07-21T15:00:00+00:00",
+    })
+    const result = await new VibePerksClient("https://x", "t", fetch).serve()
+    expect(isEarningCapped(result)).toBe(true)
+    if (isEarningCapped(result)) expect(result.try_again_at).toBe("2026-07-21T15:00:00+00:00")
   })
 
   it("returns null on 204 (empty inventory)", async () => {

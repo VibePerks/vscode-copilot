@@ -39,8 +39,10 @@ function fakeKv(): Kv & { store: Map<string, unknown> } {
 
 // harness wires a real VibePerksClient over a programmable fetch so the engine is
 // tested against the actual client behaviour (status mapping, retry).
+type ServeItem = Ad | null | "error" | "unauthorized" | { capped: string }
+
 function harness() {
-  const serveQueue: (Ad | null | "error" | "unauthorized")[] = []
+  const serveQueue: ServeItem[] = []
   const impressionStatuses: number[] = []
   const delivered: Impression[] = []
   let serveCalls = 0
@@ -53,6 +55,12 @@ function harness() {
       if (next === "error") throw new Error("network down")
       if (next === "unauthorized") return new Response(null, { status: 401 })
       if (next == null) return new Response(null, { status: 204 })
+      if (typeof next === "object" && "capped" in next) {
+        return new Response(
+          JSON.stringify({ status: "earning_capped", ad_id: null, try_again_at: next.capped }),
+          { status: 200 },
+        )
+      }
       return new Response(JSON.stringify(next), { status: 200 })
     }
     impressionAttempts++
@@ -79,6 +87,9 @@ function harness() {
 async function seedState(kv: Kv, a: Ad | null, servedAt: number, recorded: boolean) {
   await kv.set("vibeperks:state", { ad: a, servedAt, recorded })
 }
+
+// Billable serve cadence: a new ad (one impression) at most every 5 minutes.
+const FIVE_MIN = 5 * 60_000
 
 describe("engine happy path", () => {
   it("serves + caches an ad on active, returns it, then records on idle", async () => {
@@ -131,28 +142,55 @@ describe("engine opt-out", () => {
 })
 
 describe("engine rotation / dwell", () => {
-  it("does not re-serve within the rotate window", async () => {
+  it("does not re-serve within the 5-minute billable window", async () => {
     const kv = fakeKv()
     const h = harness()
     h.serveQueue.push(ad({ ad_id: "a1" }), ad({ ad_id: "a2", impression_token: "imp2" }))
 
     await onActive(kv, h.client, CFG, META, 1000)
-    const state = await onActive(kv, h.client, CFG, META, 6000) // 5s < 20s window
+    const state = await onActive(kv, h.client, CFG, META, 60_000) // 59s < 5min window
     expect(h.serveCalls).toBe(1)
     expect(state.ad?.ad_id).toBe("a1")
   })
 
-  it("re-serves after the window and records the prior ad's impression", async () => {
+  it("re-serves after the 5-minute window and records the prior ad's impression", async () => {
     const kv = fakeKv()
     const h = harness()
     h.serveQueue.push(ad({ ad_id: "a1" }), ad({ ad_id: "a2", impression_token: "imp2" }))
 
     await onActive(kv, h.client, CFG, META, 1000)
-    const state = await onActive(kv, h.client, CFG, META, 22000) // 21s >= 20s window
+    const state = await onActive(kv, h.client, CFG, META, 1000 + FIVE_MIN + 1000)
     expect(h.serveCalls).toBe(2)
     expect(state.ad?.ad_id).toBe("a2")
     expect(h.delivered).toHaveLength(1)
-    expect(h.delivered[0]).toMatchObject({ impression_token: "imp1", displayed_ms: 21000 })
+    expect(h.delivered[0]).toMatchObject({
+      impression_token: "imp1",
+      displayed_ms: FIVE_MIN + 1000,
+    })
+  })
+})
+
+describe("engine earning cap", () => {
+  it("caches try_again_at, serves no ad, and backs off until the reset time", async () => {
+    const kv = fakeKv()
+    const h = harness()
+    const resetAt = new Date(2000 + FIVE_MIN).toISOString()
+    h.serveQueue.push({ capped: resetAt }, ad({ ad_id: "later", impression_token: "impL" }))
+
+    const capped = await onActive(kv, h.client, CFG, META, 1000)
+    expect(capped.ad).toBeNull()
+    expect(capped.tryAgainAt).toBe(resetAt)
+    expect(h.serveCalls).toBe(1)
+
+    // Within the backoff window: no serve at all.
+    await onActive(kv, h.client, CFG, META, 2000)
+    expect(h.serveCalls).toBe(1)
+
+    // After the reset time: serving resumes and the cap clears.
+    const resumed = await onActive(kv, h.client, CFG, META, Date.parse(resetAt) + 1000)
+    expect(h.serveCalls).toBe(2)
+    expect(resumed.ad?.ad_id).toBe("later")
+    expect(resumed.tryAgainAt).toBeUndefined()
   })
 })
 
@@ -176,7 +214,7 @@ describe("engine serve failure", () => {
     await seedState(kv, ad(), 1000, false) // a previously served, unrecorded ad
     h.serveQueue.push("error")
 
-    await expect(onActive(kv, h.client, CFG, META, 22000)).rejects.toThrow(/network down/)
+    await expect(onActive(kv, h.client, CFG, META, 1000 + FIVE_MIN)).rejects.toThrow(/network down/)
     expect(h.delivered).toHaveLength(1) // prior impression flushed despite serve failure
     expect(h.delivered[0].impression_token).toBe("imp1")
     const s = await loadState(kv)
@@ -192,7 +230,7 @@ describe("engine unauthorized token", () => {
     await seedState(kv, ad(), 1000, false) // a previously served, unrecorded ad
     h.serveQueue.push("unauthorized")
 
-    const state = await onActive(kv, h.client, CFG, META, 22000)
+    const state = await onActive(kv, h.client, CFG, META, 1000 + FIVE_MIN)
     expect(state.needsLogin).toBe(true)
     expect(state.needsLoginReason).toBe("device token invalid or revoked")
     expect(state.ad).toBeNull()

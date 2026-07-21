@@ -79,6 +79,23 @@ export class StatusBar {
     this.item.show()
   }
 
+  // showPaused renders the earning-cap notice: the publisher hit their hourly/daily
+  // limit, so serving is paused until it resets. Plain (untinted) so it reads as an
+  // informational pause, not a paid ad. `tryAgainAt` (ISO-8601 UTC) drives the
+  // tooltip's reset time; the client clock is used only for the local display.
+  showPaused(tryAgainAt?: string): void {
+    this.item.text = "$(megaphone) VibePerks: limit reached"
+    const resetAt = tryAgainAt ? new Date(tryAgainAt) : undefined
+    const when =
+      resetAt && !Number.isNaN(resetAt.getTime())
+        ? ` More ads at ${resetAt.toLocaleTimeString()}.`
+        : ""
+    this.item.tooltip = `VibePerks - you have reached your earning limit for now.${when}`
+    this.item.command = LEARN_MORE_COMMAND
+    this.item.backgroundColor = undefined
+    this.item.show()
+  }
+
   // showNeedsLogin renders the sign-in notice shown when the device token was
   // rejected. `reason` (e.g. "device token invalid or revoked", "account suspended")
   // is surfaced so the user knows why earning stopped; clicking it runs sign-in.

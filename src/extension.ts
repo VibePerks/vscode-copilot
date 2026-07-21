@@ -73,6 +73,8 @@ function render(state: AdState): void {
     return
   }
   if (state.needsLogin) statusBar.showNeedsLogin(state.needsLoginReason)
+  else if (state.tryAgainAt && Date.parse(state.tryAgainAt) > Date.now())
+    statusBar.showPaused(state.tryAgainAt)
   else if (state.ad) statusBar.showAd(state.ad)
   else statusBar.showMuted()
 }

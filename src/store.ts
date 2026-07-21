@@ -33,13 +33,16 @@ export function mementoKv(memento: Memento): Kv {
 // epoch-ms the ad started showing (the status bar renders it immediately on serve);
 // `recorded` prevents double-counting one ad across the active/idle transitions.
 // `needsLogin` is set when the device token was rejected (401/403) so the status bar
-// shows a sign-in notice instead of an ad.
+// shows a sign-in notice instead of an ad. `tryAgainAt` is the ISO-8601 UTC time an
+// active earning-cap resets: while it is in the future there is no ad, serving is
+// paused, and the status bar shows a limit-reached notice.
 export interface AdState {
   ad: Ad | null
   servedAt: number
   recorded: boolean
   needsLogin?: boolean
   needsLoginReason?: string
+  tryAgainAt?: string
 }
 
 const STATE_KEY = "vibeperks:state"
