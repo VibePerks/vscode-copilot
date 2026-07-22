@@ -1,0 +1,12 @@
+.vscode/**
+node_modules/**
+tests/**
+coverage/**
+**/*.ts
+!src/**/*.ts
+tsconfig.json
+vitest.config.ts
+.prettierrc
+.gitignore
+*.vsix
+**/*.tsbuildinfo
