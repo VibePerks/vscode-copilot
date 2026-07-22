@@ -1,0 +1,83 @@
+{
+  "name": "vibeperks-copilot-chat",
+  "displayName": "VibePerks for Copilot Chat",
+  "version": "0.1.0",
+  "description": "VibePerks sponsor unit for GitHub Copilot Chat in VS Code - one quiet sponsor line in the status bar that earns you credit while your agent works.",
+  "publisher": "vibeperks",
+  "license": "PolyForm-Shield-1.0.0",
+  "homepage": "https://vibeperks.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VibePerks/vscode-copilot.git"
+  },
+  "type": "commonjs",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "vibeperks",
+    "copilot",
+    "copilot-chat",
+    "sponsor"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "vibeperks.signIn",
+        "title": "VibePerks: Sign in"
+      },
+      {
+        "command": "vibeperks.signOut",
+        "title": "VibePerks: Sign out"
+      },
+      {
+        "command": "vibeperks.optOut",
+        "title": "VibePerks: Opt out of sponsor unit"
+      },
+      {
+        "command": "vibeperks.optIn",
+        "title": "VibePerks: Opt in to sponsor unit"
+      },
+      {
+        "command": "vibeperks.learnMore",
+        "title": "VibePerks: Learn more about the current sponsor"
+      },
+      {
+        "command": "vibeperks.menu",
+        "title": "VibePerks: Open menu"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "vibeperks.ads",
+        "name": "vibeperks",
+        "fullName": "VibePerks",
+        "description": "Show the current VibePerks sponsor line and balance",
+        "isSticky": false
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "format:check": "prettier --check \"src/**/*.{ts,js}\" \"tests/**/*.ts\"",
+    "package": "npm run build && vsce package --no-dependencies -o vibeperks-copilot-chat.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "esbuild": "^0.24.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
