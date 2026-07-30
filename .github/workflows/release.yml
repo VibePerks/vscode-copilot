@@ -1,0 +1,76 @@
+name: Release VSIX
+
+# Builds and publishes the sideloadable .vsix to a GitHub Release so that
+# https://vibeperks.ai/vsix-copilot (which redirects to releases/latest/download)
+# always resolves to the freshest package. This workflow lives at the root of the
+# public VibePerks/vscode-copilot repo, into which plugin/vscode-copilot/ is
+# mirrored by the monorepo's scripts/git-push-main.ps1. It is dormant inside the
+# monorepo (only root-level .github/workflows run there).
+on:
+  # Dispatch-only: triggered by the monorepo CI/CD release-plugins job after
+  # every test gate passes. Auto-trigger on push removed so an untested mirror
+  # push can never publish binaries.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test
+        run: npm test
+
+      - name: Build + package VSIX
+        run: |
+          npm run build
+          npx --yes @vscode/vsce package --no-dependencies -o vibeperks-copilot-chat.vsix
+
+      - name: Resolve release channel
+        id: channel
+        run: |
+          if [ "${{ github.ref_name }}" = "dev" ]; then
+            {
+              echo "tag=dev-latest"
+              echo "name=Dev build"
+              echo "prerelease=true"
+              echo "make_latest=false"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "tag=latest"
+              echo "name=Latest build"
+              echo "prerelease=false"
+              echo "make_latest=true"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # Move the channel tag to THIS commit before publishing. softprops/action-gh-release
+      # refreshes an existing release's assets but never re-points an existing tag, which
+      # left the "latest"/"dev-latest" tag (and thus the release's displayed version and its
+      # auto-generated "Source code" archives) frozen at the commit where the tag was first
+      # created while the VSIX was rebuilt. Force-moving the tag keeps the version text,
+      # source archives, and the .vsix asset all pointing at the same commit.
+      - name: Move the "${{ steps.channel.outputs.tag }}" tag to this commit
+        run: |
+          git tag -f "${{ steps.channel.outputs.tag }}" HEAD
+          git push -f origin "refs/tags/${{ steps.channel.outputs.tag }}"
+
+      - name: Publish to the "${{ steps.channel.outputs.tag }}" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.channel.outputs.tag }}
+          name: ${{ steps.channel.outputs.name }}
+          prerelease: ${{ steps.channel.outputs.prerelease }}
+          make_latest: ${{ steps.channel.outputs.make_latest }}
+          files: vibeperks-copilot-chat.vsix
