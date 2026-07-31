@@ -1,5 +1,6 @@
 import { renderLine } from "./sanitize"
 import type { Ad } from "./types"
+import { HOUSE_AD_COPY } from "./types"
 
 // Command ids the status bar item points at. Kept here so extension.ts and the
 // status bar agree on a single source of truth.
@@ -46,8 +47,9 @@ export function adText(ad: Ad): string {
   return clip(`$(megaphone) ${renderLine(ad)}`, MAX_TEXT)
 }
 
-// StatusBar wraps one status bar item and renders the three states the surface can
-// be in: a served sponsor line, the muted unconfigured placeholder, or hidden.
+// StatusBar wraps one status bar item and renders the states the surface can
+// be in: a served sponsor line, the earning-capped house ad + countdown, the muted
+// unconfigured placeholder, or hidden.
 export class StatusBar {
   private readonly item: StatusBarTarget
   private readonly highlight: unknown
@@ -79,16 +81,23 @@ export class StatusBar {
     this.item.show()
   }
 
-  // showPaused renders the earning-cap notice: the publisher hit their hourly/daily
-  // limit, so serving is paused until it resets. Plain (untinted) so it reads as an
+  // showCapped renders the earning-cap notice: the publisher hit their hourly/daily
+  // limit, so serving is paused until the cap resets. Instead of a blank slot, the
+  // house ad sentence is shown with a live "more ads in hh:mm" countdown so the
+  // publisher knows when earning resumes. Plain (untinted) so it reads as an
   // informational pause, not a paid ad. `tryAgainAt` (ISO-8601 UTC) drives the
-  // tooltip's reset time; the client clock is used only for the local display.
-  showPaused(tryAgainAt?: string): void {
-    this.item.text = "$(megaphone) VibePerks: limit reached"
-    const resetAt = tryAgainAt ? new Date(tryAgainAt) : undefined
+  // tooltip; `lang` picks the localized house ad copy (falls back to "en").
+  showCapped(tryAgainAt: string, lang?: string): void {
+    const copy = HOUSE_AD_COPY[lang ?? "en"] ?? HOUSE_AD_COPY["en"]
+    const resetAt = new Date(tryAgainAt)
+    const remaining = Math.max(0, resetAt.getTime() - Date.now())
+    const h = Math.floor(remaining / 3_600_000)
+    const m = Math.floor((remaining % 3_600_000) / 60_000)
+    const countdown = `more ads in ${h}h ${String(m).padStart(2, "0")}m`
+    this.item.text = clip(`$(megaphone) ${copy} - ${countdown}`, MAX_TEXT)
     const when =
       resetAt && !Number.isNaN(resetAt.getTime())
-        ? ` More ads at ${resetAt.toLocaleTimeString()}.`
+        ? ` Resumes at ${resetAt.toLocaleTimeString()}.`
         : ""
     this.item.tooltip = `VibePerks - you have reached your earning limit for now.${when}`
     this.item.command = LEARN_MORE_COMMAND
