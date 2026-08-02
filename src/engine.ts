@@ -23,13 +23,21 @@ export interface Meta {
 }
 
 const FLUSH_RETRY_DELAY_MS = 200
-// Billable serve cadence: at most one new ad (one impression) every 5 minutes while
-// active, so a continuously active session earns at most 12 ads/hour - matching the
-// backend's per-hour earning cap. Between serves the status bar keeps the cached ad;
-// an idle editor triggers no activity bursts, so it stops serving.
-export const MIN_BILLABLE_INTERVAL_MS = 5 * 60 * 1000
+
+// Fallback hourly cap when the serve response omits the field (older backends).
+// 3600 / 12 = 300s between rotations, matching the pre-cap-field default.
+const DEFAULT_HOURLY_CAP = 12
 
 const EMPTY_STATE: AdState = { ad: null, servedAt: 0, recorded: false }
+
+// rotationIntervalMs returns the paced serve interval for a publisher: one ad
+// every (3600 / hourly_cap) seconds while active, so a continuously focused session
+// earns at most hourly_cap ads/hour. Falls back to 300s (12/hour) when no cap is
+// known (fresh install, old backend).
+export function rotationIntervalMs(state: AdState): number {
+  const cap = state.ad?.hourly_cap ?? DEFAULT_HOURLY_CAP
+  return (3600 / cap) * 1000
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -91,14 +99,12 @@ export async function flush(kv: Kv, client: VibePerksClient): Promise<void> {
   if (firstErr) throw firstErr
 }
 
-// onActive is the agent-working worker. It serves the next billable ad only when
-// there is no ad, or when at least MIN_BILLABLE_INTERVAL_MS has elapsed since the
-// last serve (so serving is paced to <=12/hour), recording the current ad's
-// impression first, then flushes the buffer. While an earning cap is active it
-// serves nothing until `try_again_at`. The resulting AdState is returned so the
-// caller renders the status bar from it. Opt-out clears the cached ad, does no
-// network I/O, and returns the empty state.
-export async function onActive(
+// serveAndUpdate is the core serve worker: records the current ad's impression
+// (if any), calls serve, and persists the new state. It is called on every timer
+// tick and on focus-gain when the rotation interval has elapsed. While an earning
+// cap is active it serves nothing until `try_again_at` passes. Opt-out clears the
+// cached ad and does no network I/O.
+async function serveAndUpdate(
   kv: Kv,
   client: VibePerksClient,
   cfg: PluginConfig,
@@ -115,19 +121,11 @@ export async function onActive(
     await flush(kv, client)
     return s
   }
-  const due = !s.ad || now - s.servedAt >= MIN_BILLABLE_INTERVAL_MS
-  if (!due) {
-    await flush(kv, client)
-    return s
-  }
   s = await recordCurrent(kv, s, meta, now)
   let result: ServeResult
   try {
     result = await client.serve()
   } catch (e) {
-    // A rejected device token is terminal: clear the cached ad and flag the slot so
-    // the status bar shows a sign-in notice. This is a handled outcome, not an error
-    // to surface, so the caller renders the returned state.
     if (e instanceof Error && e.name === "UnauthorizedError") {
       const reason = (e as { reason?: string }).reason ?? ""
       const needsLogin: AdState = {
@@ -141,35 +139,79 @@ export async function onActive(
       await flush(kv, client)
       return needsLogin
     }
-    // Keep the buffered impression and the recorded flag; surface the serve error
-    // (the extension entry boundary swallows it so VS Code is unaffected).
     await saveState(kv, s)
     await flush(kv, client)
     throw e
   }
   if (isEarningCapped(result)) {
     // Publisher hit their earning cap: no ad, pause serving until try_again_at.
+    // The cached ad (if any) is cleared; the status bar will show the house ad
+    // sentence + countdown until the cap resets.
     const capped: AdState = {
       ad: null,
       servedAt: 0,
       recorded: false,
       tryAgainAt: result.try_again_at,
+      lang: s.lang ?? s.ad?.lang,
     }
     await saveState(kv, capped)
     await flush(kv, client)
     return capped
   }
   const next: AdState = result
-    ? { ad: result, servedAt: now, recorded: false }
+    ? { ad: result, servedAt: now, recorded: false, lang: result.lang }
     : { ad: null, servedAt: 0, recorded: false }
   await saveState(kv, next)
   await flush(kv, client)
   return next
 }
 
-// onIdle is the agent-stopped worker: it records the current ad's impression (if
-// not yet recorded) and flushes the buffer. Opt-out is a no-op.
-export async function onIdle(
+// onFocus is called when the window gains focus. It serves immediately when no ad
+// is cached or when the rotation interval has elapsed since the last serve (e.g.
+// the user was away long enough that a new ad is due). Otherwise it leaves the
+// current ad in place - the timer will rotate it when the interval expires.
+export async function onFocus(
+  kv: Kv,
+  client: VibePerksClient,
+  cfg: PluginConfig,
+  meta: Meta,
+  now: number,
+): Promise<AdState> {
+  if (cfg.optOut) {
+    await clearState(kv)
+    return { ...EMPTY_STATE }
+  }
+  let s = await loadState(kv)
+  // If an earning cap is still active, don't serve - the timer will wake us later.
+  if (s.tryAgainAt && now < Date.parse(s.tryAgainAt)) {
+    await flush(kv, client)
+    return s
+  }
+  const interval = rotationIntervalMs(s)
+  const due = !s.ad || now - s.servedAt >= interval
+  if (!due) {
+    await flush(kv, client)
+    return s
+  }
+  return serveAndUpdate(kv, client, cfg, meta, now)
+}
+
+// onTick is the rotation timer worker: called every rotationIntervalMs while the
+// window is focused. It records the current ad's impression and serves the next
+// one. While earning-capped it is a no-op (the timer is cleared on cap).
+export async function onTick(
+  kv: Kv,
+  client: VibePerksClient,
+  cfg: PluginConfig,
+  meta: Meta,
+  now: number,
+): Promise<AdState> {
+  return serveAndUpdate(kv, client, cfg, meta, now)
+}
+
+// onBlur is the window-unfocused worker: it records the current ad's impression
+// (if displayed and not yet recorded) and flushes the buffer. Opt-out is a no-op.
+export async function onBlur(
   kv: Kv,
   client: VibePerksClient,
   cfg: PluginConfig,
