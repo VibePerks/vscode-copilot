@@ -129,8 +129,8 @@ describe("StatusBar", () => {
     const highlight = { id: AD_BACKGROUND_COLOR_ID }
     const bar = new StatusBar(item, highlight)
     bar.showAd(ad())
-    bar.showPaused("2026-07-21T15:00:00+00:00")
-    expect(item.text).toContain("limit reached")
+    bar.showCapped("2026-07-21T15:00:00+00:00")
+    expect(item.text).toContain("Make your AI pay for itself")
     expect(item.tooltip).toContain("earning limit")
     expect(item.backgroundColor).toBeUndefined()
     expect(item.shown).toBe(true)

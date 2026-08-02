@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { VibePerksClient, type FetchFn } from "../src/client"
 import type { PluginConfig } from "../src/config"
-import { onActive, onIdle, type Meta } from "../src/engine"
+import { onBlur, onFocus, type Meta } from "../src/engine"
 import { loadQueue, loadState, type Kv } from "../src/store"
 import type { Ad, Impression } from "../src/types"
 
@@ -97,13 +97,13 @@ describe("engine happy path", () => {
     const h = harness()
     h.serveQueue.push(ad())
 
-    const state = await onActive(kv, h.client, CFG, META, 1000)
+    const state = await onFocus(kv, h.client, CFG, META, 1000)
     expect(state.ad?.ad_id).toBe("a1")
     expect((await loadState(kv)).ad?.ad_id).toBe("a1")
     expect(h.serveCalls).toBe(1)
     expect(h.delivered).toHaveLength(0)
 
-    await onIdle(kv, h.client, CFG, META, 5000)
+    await onBlur(kv, h.client, CFG, META, 5000)
     expect(h.delivered).toHaveLength(1)
     expect(h.delivered[0]).toMatchObject({
       impression_token: "imp1",
@@ -120,7 +120,7 @@ describe("engine happy path", () => {
     const kv = fakeKv()
     const h = harness()
     h.serveQueue.push(null)
-    const state = await onActive(kv, h.client, CFG, META, 1000)
+    const state = await onFocus(kv, h.client, CFG, META, 1000)
     expect(state.ad).toBeNull()
   })
 })
@@ -131,12 +131,12 @@ describe("engine opt-out", () => {
     const h = harness()
     await seedState(kv, ad(), 1000, false)
 
-    const state = await onActive(kv, h.client, { ...CFG, optOut: true }, META, 2000)
+    const state = await onFocus(kv, h.client, { ...CFG, optOut: true }, META, 2000)
     expect(state.ad).toBeNull()
     expect((await loadState(kv)).ad).toBeNull()
     expect(h.serveCalls).toBe(0)
 
-    await onIdle(kv, h.client, { ...CFG, optOut: true }, META, 3000)
+    await onBlur(kv, h.client, { ...CFG, optOut: true }, META, 3000)
     expect(h.delivered).toHaveLength(0)
   })
 })
@@ -147,8 +147,8 @@ describe("engine rotation / dwell", () => {
     const h = harness()
     h.serveQueue.push(ad({ ad_id: "a1" }), ad({ ad_id: "a2", impression_token: "imp2" }))
 
-    await onActive(kv, h.client, CFG, META, 1000)
-    const state = await onActive(kv, h.client, CFG, META, 60_000) // 59s < 5min window
+    await onFocus(kv, h.client, CFG, META, 1000)
+    const state = await onFocus(kv, h.client, CFG, META, 60_000) // 59s < 5min window
     expect(h.serveCalls).toBe(1)
     expect(state.ad?.ad_id).toBe("a1")
   })
@@ -158,8 +158,8 @@ describe("engine rotation / dwell", () => {
     const h = harness()
     h.serveQueue.push(ad({ ad_id: "a1" }), ad({ ad_id: "a2", impression_token: "imp2" }))
 
-    await onActive(kv, h.client, CFG, META, 1000)
-    const state = await onActive(kv, h.client, CFG, META, 1000 + FIVE_MIN + 1000)
+    await onFocus(kv, h.client, CFG, META, 1000)
+    const state = await onFocus(kv, h.client, CFG, META, 1000 + FIVE_MIN + 1000)
     expect(h.serveCalls).toBe(2)
     expect(state.ad?.ad_id).toBe("a2")
     expect(h.delivered).toHaveLength(1)
@@ -177,17 +177,17 @@ describe("engine earning cap", () => {
     const resetAt = new Date(2000 + FIVE_MIN).toISOString()
     h.serveQueue.push({ capped: resetAt }, ad({ ad_id: "later", impression_token: "impL" }))
 
-    const capped = await onActive(kv, h.client, CFG, META, 1000)
+    const capped = await onFocus(kv, h.client, CFG, META, 1000)
     expect(capped.ad).toBeNull()
     expect(capped.tryAgainAt).toBe(resetAt)
     expect(h.serveCalls).toBe(1)
 
     // Within the backoff window: no serve at all.
-    await onActive(kv, h.client, CFG, META, 2000)
+    await onFocus(kv, h.client, CFG, META, 2000)
     expect(h.serveCalls).toBe(1)
 
     // After the reset time: serving resumes and the cap clears.
-    const resumed = await onActive(kv, h.client, CFG, META, Date.parse(resetAt) + 1000)
+    const resumed = await onFocus(kv, h.client, CFG, META, Date.parse(resetAt) + 1000)
     expect(h.serveCalls).toBe(2)
     expect(resumed.ad?.ad_id).toBe("later")
     expect(resumed.tryAgainAt).toBeUndefined()
@@ -200,9 +200,9 @@ describe("engine dedupe", () => {
     const h = harness()
     h.serveQueue.push(ad())
 
-    await onActive(kv, h.client, CFG, META, 1000)
-    await onIdle(kv, h.client, CFG, META, 3000)
-    await onIdle(kv, h.client, CFG, META, 4000)
+    await onFocus(kv, h.client, CFG, META, 1000)
+    await onBlur(kv, h.client, CFG, META, 3000)
+    await onBlur(kv, h.client, CFG, META, 4000)
     expect(h.delivered).toHaveLength(1)
   })
 })
@@ -214,7 +214,7 @@ describe("engine serve failure", () => {
     await seedState(kv, ad(), 1000, false) // a previously served, unrecorded ad
     h.serveQueue.push("error")
 
-    await expect(onActive(kv, h.client, CFG, META, 1000 + FIVE_MIN)).rejects.toThrow(/network down/)
+    await expect(onFocus(kv, h.client, CFG, META, 1000 + FIVE_MIN)).rejects.toThrow(/network down/)
     expect(h.delivered).toHaveLength(1) // prior impression flushed despite serve failure
     expect(h.delivered[0].impression_token).toBe("imp1")
     const s = await loadState(kv)
@@ -230,7 +230,7 @@ describe("engine unauthorized token", () => {
     await seedState(kv, ad(), 1000, false) // a previously served, unrecorded ad
     h.serveQueue.push("unauthorized")
 
-    const state = await onActive(kv, h.client, CFG, META, 1000 + FIVE_MIN)
+    const state = await onFocus(kv, h.client, CFG, META, 1000 + FIVE_MIN)
     expect(state.needsLogin).toBe(true)
     expect(state.needsLoginReason).toBe("device token invalid or revoked")
     expect(state.ad).toBeNull()
@@ -249,7 +249,7 @@ describe("engine unauthorized token", () => {
     await kv.set("vibeperks:state", { ad: null, servedAt: 0, recorded: false, needsLogin: true })
     h.serveQueue.push(ad({ ad_id: "a2", impression_token: "imp2" }))
 
-    const state = await onActive(kv, h.client, CFG, META, 1000)
+    const state = await onFocus(kv, h.client, CFG, META, 1000)
     expect(state.needsLogin).toBeFalsy()
     expect(state.ad?.ad_id).toBe("a2")
   })
@@ -262,7 +262,7 @@ describe("engine impression delivery", () => {
     await seedState(kv, ad(), 1000, false)
     h.impressionStatuses.push(503, 200)
 
-    await onIdle(kv, h.client, CFG, META, 3000)
+    await onBlur(kv, h.client, CFG, META, 3000)
     expect(h.impressionAttempts).toBe(2)
     expect(h.delivered).toHaveLength(1)
     expect(await loadQueue(kv)).toHaveLength(0)
@@ -274,7 +274,7 @@ describe("engine impression delivery", () => {
     await seedState(kv, ad(), 1000, false)
     h.impressionStatuses.push(503, 503)
 
-    await expect(onIdle(kv, h.client, CFG, META, 3000)).rejects.toThrow()
+    await expect(onBlur(kv, h.client, CFG, META, 3000)).rejects.toThrow()
     expect(h.delivered).toHaveLength(0)
     expect(await loadQueue(kv)).toHaveLength(1)
   })
@@ -285,7 +285,7 @@ describe("engine impression delivery", () => {
     await seedState(kv, ad(), 1000, false)
     h.impressionStatuses.push(422)
 
-    await expect(onIdle(kv, h.client, CFG, META, 3000)).resolves.toBeUndefined()
+    await expect(onBlur(kv, h.client, CFG, META, 3000)).resolves.toBeUndefined()
     expect(h.impressionAttempts).toBe(1)
     expect(h.delivered).toHaveLength(0)
     expect(await loadQueue(kv)).toHaveLength(0)
@@ -298,8 +298,8 @@ describe("engine privacy", () => {
     const h = harness()
     h.serveQueue.push(ad())
 
-    await onActive(kv, h.client, CFG, META, 1000)
-    await onIdle(kv, h.client, CFG, META, 2000)
+    await onFocus(kv, h.client, CFG, META, 1000)
+    await onBlur(kv, h.client, CFG, META, 2000)
 
     const allowed = new Set([
       "impression_token",
